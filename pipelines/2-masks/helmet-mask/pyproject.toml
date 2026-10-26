@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "helmet-mask"
+version = "0.1.0"
+description = "Mask rigidly-mounted helmet/rig in 360 equirectangular image sequences"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "Pillow",
+    "scipy",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+helmet-mask = "helmet_mask.cli:main"
+helmet-mask-knobs = "helmet_mask.knobs:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["helmet_mask*"]

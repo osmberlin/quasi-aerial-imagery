@@ -1,0 +1,12 @@
+# Build and environment artefacts (all regenerable)
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+dist/
+build/
+
+# test-runs/ holds real helmet-camera frames (private, ~300 MB); only its README is versioned
+test-runs/*
+!test-runs/README.md

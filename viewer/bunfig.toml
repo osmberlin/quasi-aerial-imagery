@@ -1,0 +1,15 @@
+# Local/dev install policy for the viewer.
+
+# Supply-chain cooldown: only install versions published at least 5 days ago.
+[install]
+minimumReleaseAge = 432000
+minimumReleaseAgeExcludes = [
+  "typescript",
+  "@typescript/typescript-darwin-arm64",
+  "@typescript/typescript-linux-x64",
+]
+
+# Global virtual store (install once, link everywhere). Vite needs server.fs.allow for it, see vite.config.ts.
+# @see https://bun.com/docs/pm/global-store
+linker = "isolated"
+globalStore = true

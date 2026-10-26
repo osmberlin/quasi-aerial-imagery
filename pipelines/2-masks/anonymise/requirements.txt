@@ -1,0 +1,8 @@
+# Face, person and licence-plate blurring for anonymise_frames.py and check_residual_plates.py.
+# Model weights (yolo11n.pt and the plate detector) are downloaded on first use and are not part of the repository.
+numpy>=2.0
+opencv-python-headless>=4.10
+deface>=1.5
+onnxruntime>=1.18
+ultralytics>=8.3
+open-image-models>=0.4

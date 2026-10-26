@@ -1,0 +1,290 @@
+{
+  "generated": "2026-10-14T03:51:09.137Z",
+  "scenes": [
+    {
+      "id": "beispiel-nord",
+      "title": "Beispiel Nord (Dummy)",
+      "captured": "2026-04-03",
+      "frames": 120,
+      "georeferenced": true,
+      "origin": [13.4153, 52.4947],
+      "extentMeters": {
+        "minX": -60,
+        "minY": -40,
+        "maxX": 60,
+        "maxY": 40
+      },
+      "layers": [
+        {
+          "id": "nearest",
+          "title": "Nächster Nachbar",
+          "metersPerPixel": 0.1172,
+          "tiles": [
+            {
+              "image": "beispiel-nord/nearest/0_0.png",
+              "corners": [
+                [-60, 40],
+                [0, 40],
+                [0, 0],
+                [-60, 0]
+              ]
+            },
+            {
+              "image": "beispiel-nord/nearest/0_1.png",
+              "corners": [
+                [0, 40],
+                [60, 40],
+                [60, 0],
+                [0, 0]
+              ]
+            },
+            {
+              "image": "beispiel-nord/nearest/1_0.png",
+              "corners": [
+                [-60, 0],
+                [0, 0],
+                [0, -40],
+                [-60, -40]
+              ]
+            },
+            {
+              "image": "beispiel-nord/nearest/1_1.png",
+              "corners": [
+                [0, 0],
+                [60, 0],
+                [60, -40],
+                [0, -40]
+              ]
+            }
+          ],
+          "report": {
+            "frames": 120,
+            "tiles": 4,
+            "residualsM": {
+              "mean": 0.042,
+              "max": 0.19
+            },
+            "note": "Testdaten"
+          }
+        },
+        {
+          "id": "median",
+          "title": "Median",
+          "metersPerPixel": 0.1172,
+          "tiles": [
+            {
+              "image": "beispiel-nord/median/0_0.png",
+              "corners": [
+                [-60, 40],
+                [0, 40],
+                [0, 0],
+                [-60, 0]
+              ]
+            },
+            {
+              "image": "beispiel-nord/median/0_1.png",
+              "corners": [
+                [0, 40],
+                [60, 40],
+                [60, 0],
+                [0, 0]
+              ]
+            },
+            {
+              "image": "beispiel-nord/median/1_0.png",
+              "corners": [
+                [-60, 0],
+                [0, 0],
+                [0, -40],
+                [-60, -40]
+              ]
+            },
+            {
+              "image": "beispiel-nord/median/1_1.png",
+              "corners": [
+                [0, 0],
+                [60, 0],
+                [60, -40],
+                [0, -40]
+              ]
+            }
+          ],
+          "report": {
+            "frames": 120,
+            "tiles": 4,
+            "residualsM": {
+              "mean": 0.052000000000000005,
+              "max": 0.24
+            },
+            "note": "Testdaten"
+          }
+        }
+      ],
+      "assessment": {
+        "date": "2026-10-01",
+        "summary": "Testdaten: Nächster Nachbar wirkt schärfer, Median hat weniger Artefakte.",
+        "rating": 3,
+        "measured": false,
+        "layers": [
+          {
+            "id": "nearest",
+            "verdict": "Scharf, mit Kanten-Artefakten",
+            "good": ["Markierungen klar erkennbar"],
+            "bad": ["Schatten an Bordsteinen"]
+          },
+          {
+            "id": "median",
+            "verdict": "Ruhiger Eindruck",
+            "good": ["Keine Doppelbilder"],
+            "bad": ["Leichte Unschärfe"]
+          }
+        ],
+        "openQuestions": ["Stimmt die Breite der Fahrbahn?"],
+        "resultIds": ["R-001", "R-002"]
+      },
+      "notes": "Testdaten zum Ausprobieren der Oberfläche. Keine echten Messungen."
+    },
+    {
+      "id": "beispiel-sued",
+      "title": "Beispiel Süd (Dummy)",
+      "captured": "2026-04-05",
+      "frames": 84,
+      "georeferenced": false,
+      "origin": [13.4171, 52.4921],
+      "extentMeters": {
+        "minX": -45,
+        "minY": -30,
+        "maxX": 45,
+        "maxY": 30
+      },
+      "layers": [
+        {
+          "id": "nearest",
+          "title": "Nächster Nachbar",
+          "metersPerPixel": 0.0879,
+          "tiles": [
+            {
+              "image": "beispiel-sued/nearest/0_0.png",
+              "corners": [
+                [-45, 30],
+                [0, 30],
+                [0, 0],
+                [-45, 0]
+              ]
+            },
+            {
+              "image": "beispiel-sued/nearest/0_1.png",
+              "corners": [
+                [0, 30],
+                [45, 30],
+                [45, 0],
+                [0, 0]
+              ]
+            },
+            {
+              "image": "beispiel-sued/nearest/1_0.png",
+              "corners": [
+                [-45, 0],
+                [0, 0],
+                [0, -30],
+                [-45, -30]
+              ]
+            },
+            {
+              "image": "beispiel-sued/nearest/1_1.png",
+              "corners": [
+                [0, 0],
+                [45, 0],
+                [45, -30],
+                [0, -30]
+              ]
+            }
+          ],
+          "report": {
+            "frames": 84,
+            "tiles": 4,
+            "residualsM": {
+              "mean": 0.042,
+              "max": 0.19
+            },
+            "note": "Testdaten"
+          }
+        },
+        {
+          "id": "splat",
+          "title": "Splat",
+          "metersPerPixel": 0.0879,
+          "tiles": [
+            {
+              "image": "beispiel-sued/splat/0_0.png",
+              "corners": [
+                [-45, 30],
+                [0, 30],
+                [0, 0],
+                [-45, 0]
+              ]
+            },
+            {
+              "image": "beispiel-sued/splat/0_1.png",
+              "corners": [
+                [0, 30],
+                [45, 30],
+                [45, 0],
+                [0, 0]
+              ]
+            },
+            {
+              "image": "beispiel-sued/splat/1_0.png",
+              "corners": [
+                [-45, 0],
+                [0, 0],
+                [0, -30],
+                [-45, -30]
+              ]
+            },
+            {
+              "image": "beispiel-sued/splat/1_1.png",
+              "corners": [
+                [0, 0],
+                [45, 0],
+                [45, -30],
+                [0, -30]
+              ]
+            }
+          ],
+          "report": {
+            "frames": 84,
+            "tiles": 4,
+            "residualsM": {
+              "mean": 0.052000000000000005,
+              "max": 0.24
+            },
+            "note": "Testdaten"
+          }
+        }
+      ],
+      "assessment": {
+        "date": "2026-10-10",
+        "summary": "Testdaten: Auflösung gut, Lage nur geschätzt.",
+        "rating": 4,
+        "measured": true,
+        "layers": [
+          {
+            "id": "nearest",
+            "verdict": "Gleichmäßig scharf",
+            "good": ["Gleichmäßige Auflösung"],
+            "bad": []
+          },
+          {
+            "id": "splat",
+            "verdict": "Weicher, Details verschwimmen",
+            "good": ["Keine Lücken"],
+            "bad": ["Fassaden unscharf"]
+          }
+        ],
+        "openQuestions": [],
+        "resultIds": ["R-010"]
+      }
+    }
+  ]
+}

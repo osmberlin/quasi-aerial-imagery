@@ -1,0 +1,23 @@
+# Environments and caches (all regenerable)
+.venv
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Imagery, reconstructions, model weights and videos never belong in this repository.
+# They live outside it, in <workspace>/imagery/ and <workspace>/third-party/.
+*.jpg
+*.jpeg
+*.png
+*.tif
+*.tiff
+*.vrt
+*.ply
+*.npz
+*.pt
+*.onnx
+*.mp4
+*.360
+*.36P
+*.db

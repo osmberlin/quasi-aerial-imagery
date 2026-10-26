@@ -1,0 +1,9 @@
+# Main environment for run_scene.sh, scene_ground.sh and the scripts in 1-ingest, 3-poses, 4-ground, 5-export, evaluate.
+# uv venv --python 3.12 pipelines/.venv && uv pip install --python pipelines/.venv/bin/python -r pipelines/requirements.txt
+numpy>=2.0
+opencv-python-headless>=4.10
+rasterio>=1.4
+pyproj>=3.6
+scipy>=1.13
+pillow>=10.0
+pytest>=8.0

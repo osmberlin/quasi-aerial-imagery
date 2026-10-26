@@ -1,0 +1,9 @@
+# Semantic segmentation (Mask2Former, Mapillary Vistas) for segment_frames.py, person_mask.py, rig_zone_mask.py.
+# The model (about 0.9 GB) is downloaded from Hugging Face on first use.
+numpy>=2.0
+opencv-python-headless>=4.10
+pillow>=10.0
+scipy>=1.13
+torch>=2.4
+transformers>=4.45
+pytest>=8.0
