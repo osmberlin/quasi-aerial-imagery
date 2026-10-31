@@ -50,15 +50,6 @@ The export writes `manifest.json` next to its tile images. The schema is in
 - Local metres are x east and y north from `origin`. They are converted with the WGS84 series at the
   origin latitude (`src/geo/coordinates.ts`).
 
-## Environment variables
-
-Set them in `.env.local` (git-ignored). Both are optional. An empty or missing value hides the option.
-
-- `VITE_TILDA_2026_URL`: XYZ template for the "Luftbild 2026" background (512 px tiles).
-- `VITE_TILDA_2025_URL`: XYZ template for the "Luftbild 2025" background.
-
-These URLs contain a token. They are read at build time and must not be logged or committed.
-
 ## Shortcuts
 
 | Key                     | Action                                            |

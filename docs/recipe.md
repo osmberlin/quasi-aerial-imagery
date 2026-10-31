@@ -15,10 +15,11 @@ are what they are: [learnings.md](learnings.md).
   but a reference value is better (Obernai: 1.90 m on the helmet; Mont Sainte-Odile: 2.01 m on the stick).
 - **Nothing that moves with the camera:** no flapping straps, nothing on the helmet mount. A passenger on
   the rear seat, bags and the person under the selfie stick can be masked, but each one costs image.
-- **GPS:** wait for the fix before you start. On the MAX 2 it took a while, and samples before the
+- **GPS:** wait for the fix before you start, and ride a few metres before the part you care about. On the MAX 2 it took a while, and samples before the
   first 3D fix carry wrong positions.
 - **Passes:** ride or walk important sections there and back if you can; a single pass works too.
-  Stretches that are wide, plain and open (new smooth paths, open sky, nothing near) are the hardest.
+  Stretches that are wide, plain and open (new smooth paths, open sky, nothing near) are the hardest:
+  ride them slowly and evenly, and twice where they matter (R-215).
 - **Reference widths:** if you want to measure, measure one or two widths on site at clearly
   recognisable spots and note where. A longer stop is easy to find later as a cluster of GPS points.
 

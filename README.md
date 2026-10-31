@@ -15,6 +15,8 @@ it: **[blog post on osm-verkehrswende.org](https://www.osm-verkehrswende.org/qua
 | Obernai (Alsace), bike path north of the bridge, 2026-10-23 | 143 frames from the helmet at 1.90 m, about 80 x 146 m at about 2 cm | [item ef24d727](https://api.imagery.hotosm.org/browser/stac/collections/openaerialmap/items/ef24d727-3830-43be-8e87-ebe887d60e93?.language=de&.asset=asset-original) | [MAID](https://osm-editor-kit.github.io/maid/maid/?lens=none&photo_type=flat,panoramic&bg=oam:ef24d727-3830-43be-8e87-ebe887d60e93&overlays=none&map=19.87/48.459805/7.491292) |
 | Mont Sainte-Odile (Alsace), walk on the convent terraces, 2026-10-24 | 591 frames from a selfie stick at 2.01 m, slopes and stairs, 3 cm | [item 1e7cb303](https://api.imagery.hotosm.org/browser/stac/collections/openaerialmap/items/1e7cb303-0c37-4904-81bf-374640b500af?.language=de) | [MAID](https://osm-editor-kit.github.io/maid/maid/?lens=none&photo_type=flat,panoramic&bg=oam:1e7cb303-0c37-4904-81bf-374640b500af&overlays=none&map=19/48.43799/7.40507) |
 
+Earlier tests in Berlin with photo series worked only so-so; video is the better capture.
+
 How good it is: in Obernai a path measured 3.82 m in the image and 3.95 m and 3.98 m on site (phone
 measure app), 3–4 % short (R-191, R-214). Relative measurements are good; the absolute position is GPS
 level, a metre or a few, not survey grade. Details: [docs/learnings.md#accuracy](docs/learnings.md#accuracy).

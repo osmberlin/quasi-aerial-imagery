@@ -34,6 +34,10 @@ Every statement cites its evidence as plain IDs. `R-xxx` rows are runs, in [log/
 - Stops give duplicates and no baseline. Drop frames below a minimum speed (`--min-speed`, R-193, R-205). A scene
   where the camera hardly moves has no initial image pair and cannot be reconstructed (R-095).
 - Ride important sections once out and once back. COLMAP merges the two passes into one model (R-212, R-190).
+- Wide, uniform streets are the weak spot. On the Obernai route the industrial area had about half the tie points per
+  frame (251 against 446) and twice the GPS jitter of the rest, and its frames landed 5.7 m from GPS against 2 to 3 m:
+  markings appear twice and neighbouring frames do not line up. Speed mattered less (17 against 14 km/h), and one
+  pass alone was not the cause: most of the route was ridden once and came out fine (R-215).
 - A short strip is enough. The aim is a strip of 1 to 5 m where you can measure a path width. Stretches that are too
   uniform for COLMAP (wide plain path, open sky, no near structure) can fail with no initial pair, so skip them
   (R-193).

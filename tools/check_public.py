@@ -26,7 +26,7 @@ FORBIDDEN = [
     (re.compile(r"/Users/|/home/[a-z]"), "absolute local path"),
     (re.compile(r"\btordans\b", re.I), "account name"),
     (re.compile(r"fixmycity\.de", re.I), "e-mail domain"),
-    (re.compile(r"tilda-geo\.de|imagery\.tilda", re.I), "private tile server"),
+    (re.compile(r"\btilda\b|tilda-geo", re.I), "private tile server"),
     (re.compile(r"(?i)(api[_-]?key|token|secret)\s*[=:]\s*['\"][A-Za-z0-9_\-]{16,}"), "credential"),
     (re.compile(r"password=admin"), "credential example"),
     (re.compile(r"\bTobias\b"), "personal name"),
