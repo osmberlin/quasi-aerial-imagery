@@ -5,6 +5,7 @@
 # Output: <scene>/colmap/run/sparse/0 (binary) and sparse/0/txt (text); the largest model is always model 0.
 # Skips feature extraction and matching when their marker files exist, so a failed mapper can be rerun.
 # Environment: GPS_STD (3), GPS_STD_Z (200: altitude nearly free, D-071), FLAT_PRIOR (0), SKY_ELEV (16), MASK_DIR, NO_GPS (0),
+#   COLMAP_THREADS (2),
 #   PYTHON (default: pipelines/.venv/bin/python). See README.md next to this script for what each one does.
 case "${1:-}" in -h|--help|"") sed -n '2,/^case /p' $0 | sed '$d' | sed 's/^# \{0,1\}//'; exit 0;; esac
 set -eu
@@ -12,6 +13,7 @@ IMAGES=${1:A}; SCENE=${2:A}; MATCHER=$3; MASK=${4:A}
 HERE=${0:A:h}; PIPES=${HERE:h}
 PY=${PYTHON:-$PIPES/.venv/bin/python}; GUARD=$PIPES/common/guarded_run.sh
 SKY_ELEV=${SKY_ELEV:-16}; GPS_STD=${GPS_STD:-3}; GPS_STD_Z=${GPS_STD_Z:-200}; FLAT_PRIOR=${FLAT_PRIOR:-0}; NO_GPS=${NO_GPS:-0}
+THREADS=${COLMAP_THREADS:-2}
 log() { echo "=== $(date '+%F %T') $*" | tee -a $SCENE/scene.log; }
 
 RUN=$SCENE/colmap/run; MODEL=$RUN/sparse/0
@@ -25,14 +27,14 @@ if [ ! -f $RUN/.features_done ]; then
   MAX_RSS_MB=5000 $GUARD $RUN/features colmap feature_extractor --database_path $RUN/database.db --image_path $IMAGES \
     --ImageReader.camera_model EQUIRECTANGULAR --ImageReader.single_camera 1 \
     "${MASKARG[@]}" \
-    --FeatureExtraction.use_gpu 0 --FeatureExtraction.num_threads 2 --FeatureExtraction.max_image_size 3200 --SiftExtraction.first_octave 0
+    --FeatureExtraction.use_gpu 0 --FeatureExtraction.num_threads $THREADS --FeatureExtraction.max_image_size 3200 --SiftExtraction.first_octave 0
   touch $RUN/.features_done; fi
 if [ ! -f $RUN/.matches_done ]; then
   if [ $MATCHER = spatial ]; then
     MAX_RSS_MB=5000 $GUARD $RUN/matching colmap spatial_matcher --database_path $RUN/database.db --FeatureMatching.use_gpu 0 \
-      --FeatureMatching.num_threads 2 --SpatialMatching.max_distance 45 --SpatialMatching.max_num_neighbors 60
+      --FeatureMatching.num_threads $THREADS --SpatialMatching.max_distance 45 --SpatialMatching.max_num_neighbors 60
   else
-    MAX_RSS_MB=5000 $GUARD $RUN/matching colmap exhaustive_matcher --database_path $RUN/database.db --FeatureMatching.use_gpu 0 --FeatureMatching.num_threads 2
+    MAX_RSS_MB=5000 $GUARD $RUN/matching colmap exhaustive_matcher --database_path $RUN/database.db --FeatureMatching.use_gpu 0 --FeatureMatching.num_threads $THREADS
   fi; touch $RUN/.matches_done; fi
 # frames without GPS get an empty prior in another coordinate system, which aborts the mapper
 sqlite3 $RUN/database.db "delete from pose_priors where (select count(distinct coordinate_system) from pose_priors)=2 and coordinate_system=(select coordinate_system from pose_priors group by 1 order by count(*) asc limit 1);"
@@ -49,10 +51,10 @@ fi
 mkdir -p $RUN/sparse
 if [ $NO_GPS = 1 ]; then
   MAX_RSS_MB=5000 $GUARD $RUN/mapper colmap mapper --database_path $RUN/database.db --image_path $IMAGES --output_path $RUN/sparse \
-    --Mapper.num_threads 2 --Mapper.ba_refine_focal_length 0 --Mapper.ba_refine_extra_params 0
+    --Mapper.num_threads $THREADS --Mapper.ba_refine_focal_length 0 --Mapper.ba_refine_extra_params 0
 else
   MAX_RSS_MB=5000 $GUARD $RUN/mapper colmap pose_prior_mapper --database_path $RUN/database.db --image_path $IMAGES --output_path $RUN/sparse \
-    --Mapper.num_threads 2 --Mapper.ba_refine_focal_length 0 --Mapper.ba_refine_extra_params 0 \
+    --Mapper.num_threads $THREADS --Mapper.ba_refine_focal_length 0 --Mapper.ba_refine_extra_params 0 \
     --overwrite_priors_covariance 1 --prior_position_std_x $GPS_STD --prior_position_std_y $GPS_STD --prior_position_std_z $GPS_STD_Z
 fi
 # the mapper numbers models in the order it found them, so model 0 can be a two-image fragment

@@ -46,7 +46,7 @@ renderer ([2-masks/README.md](../pipelines/2-masks/README.md#typical-use-on-a-bi
 Then the standard ground product at 2 cm (4-ground):
 
 ```bash
-LABELS=$CAP/scene/labels RENDER_MASK_DIR=$CAP/scene/masks-rig TILES=40 MAX_RSS_MB=7000 MIN_FREE_GB=5 \
+LABELS=$CAP/scene/labels RENDER_MASK_DIR=$CAP/scene/masks-rig MAX_RSS_MB=7000 MIN_FREE_GB=5 \
   RENDER_ARGS="--strip 10 --max-range 12 --wall-range 6" \
   pipelines/scene_ground.sh $CAP/scene $CAP/ingest/frames 1.90 $CAP/scene/ground
 ```
@@ -78,7 +78,7 @@ fraction of that. Run one heavy job at a time; every step runs under the watchdo
 |---|---|---|
 | Several COLMAP models, or "no initial pair" | sky not masked, or a uniform stretch | keep `SKY_ELEV=16`; split the capture into sections and skip the uniform part |
 | A long flat route curls up in height | free altitude prior | `FLAT_PRIOR=1 GPS_STD_Z=5` |
-| A render tile is killed by the watchdog | tile area too large | more `TILES` |
+| A render tile is killed by the watchdog | tile area too large | smaller `TILE_M` |
 | Walls and hedges stretch into rays | non-ground pixels used far from the camera | `--wall-range 6` (needs labels) |
 | Blurred ground | median over frames far apart | use the nearest or two-band product; denser frames |
 | Holes where cars were | vehicles are excluded on purpose | the car layer `cars.tif` shows the footprints |

@@ -137,13 +137,16 @@ Every statement cites its evidence as plain IDs. `R-xxx` rows are runs, in [log/
 - Every heavy command runs under `pipelines/common/guarded_run.sh`. It watches process memory, reclaimable system
   memory, swap growth and free disk every 5 s, and keeps the Mac awake (D-068, D-073). A per-process limit is not
   enough: a 15.5 GB COLMAP run rebooted the machine (R-083).
-- Tile memory scales with tile area, not frame count. `scene_ground.sh` cuts tiles along the longer side only. On a
-  630 x 690 m route 16 tiles of 39 x 689 m peaked at 8 GB and were killed after 11 min. 40 tiles stayed under 7 GB
-  (R-214).
+- Tile memory scales with tile area, not frame count. `scene_ground.sh` renders square tiles of `TILE_M` metres (50) on the
+  pixel grid of the whole scene, so a long diagonal route needs no special handling: scene-nord peaked at 1.9 GB per tile.
+  Strips of 39 x 689 m on a 630 x 690 m route peaked at 8 GB (R-214). Tiles need a margin of 2 m, or local gains differ at
+  the edge (R-219), and must start on whole pixels, or each one sits up to 0.7 px off (R-220).
 - Merging tiles must stream. At 2 cm one raster would need over 4 GB in memory. `merge_tiles.py` uses
   `gdalbuildvrt` and `gdal_translate` for large mosaics (R-214).
-- The whole 2.17 km route as a 2 cm ground image took 4 h 40 min on a 24 GB Apple Silicon Mac. The COG is
-  32,070 x 35,090 px, 38 MB as JPEG (R-214).
+- The whole 2.17 km route as a 2 cm ground image takes 1 h on a 24 GB Apple Silicon Mac, down from 4 h 40 min (R-214,
+  R-222). The COG is 32,070 x 35,090 px, 38 MB as JPEG. `JOBS=3` is 1.6 times faster on scene-nord with identical pixels
+  (R-221). Co-registration needs about 2.2 GB of temporary patches on the route, on top of the 1.1 GB output.
+- Swap can jump by 6 GB within 5 s and take the disk with it, too fast for a 5 s watchdog (R-224). Leave room.
 - Large outputs go to external storage, with a symlink from the scene folder. The Mac had 12 to 15 GB free (R-214).
   The guard stops a run when free disk falls below its limit: 13 GB free stopped a segmentation run at a 15 GB limit
   (R-188).

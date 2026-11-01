@@ -7,12 +7,13 @@
 #   5. car layer from the base label vote
 #   6. if REFERENCE (or Berlin WFS) is available: kerb/marking metrics and one similarity
 #      registration; registered copies of the delivered rasters
-# Renders run in TILES tiles (memory about 2-2.5 GB each) and are merged. Every heavy step runs
-# under common/guarded_run.sh, one at a time.
+# Renders run in a grid of square tiles of about TILE_M metres; tiles without track are skipped, the
+# rest merged. Every render runs under common/guarded_run.sh; JOBS tiles run side by side.
 #
 # Usage: scene_ground.sh <scene_dir> <frames_dir> <camera_height_m> [out_dir=<scene_dir>/ground]
 # Steps 1 and 3-5 use 2-masks/segment and 4-ground; step 6 uses evaluate/. Details: README.md next to this script.
-# Env: GSD (output pixel size, default 0.02 m), RENDER_ARGS (extra renderer options), LABELS (existing label dir), ROUNDS (2), TILES (4), GROUND_MODEL (npz surface, optional),
+# Env: GSD (output pixel size, default 0.02 m), RENDER_ARGS (extra renderer options), LABELS (existing label dir), ROUNDS (2), TILE_M (tile size, 50 m), TILE_MARGIN (metres rendered around each tile and dropped, 2), JOBS (tiles rendered side by side, 1),
+#      GROUND_MODEL (npz surface, optional),
 #      REFERENCE_DIR (folder with bd_bordstein.geojson / be_fahrbahnmarkierunglinie.geojson);
 #      FETCH_REFERENCE=1 downloads them from the Berlin Straßenbefahrung WFS for the scene bbox
 #      (only when the scene CRS is EPSG:25833 and the scene lies in Berlin; otherwise skipped),
@@ -25,7 +26,8 @@ case "${1:-}" in -h|--help|"") sed -n '2,/^case /p' $0 | sed '$d' | sed 's/^# \{
 set -eu
 SCENE=${1:A}; FRAMES=${2:A}; HEIGHT=$3; OUT=${4:-$SCENE/ground}; OUT=${OUT:A}
 HERE=${0:A:h}; P=${PYTHON:-$HERE/.venv/bin/python}; G=$HERE/common/guarded_run.sh; R=$HERE/4-ground/render_ground_ortho.py
-ROUNDS=${ROUNDS:-2}; TILES=${TILES:-4}
+ROUNDS=${ROUNDS:-2}; TILE_M=${TILE_M:-50}; TILE_MARGIN=${TILE_MARGIN:-2}; JOBS=${JOBS:-1}
+[ -n "${TILES:-}" ] && { echo "TILES was replaced by TILE_M (square tiles, metres)" >&2; exit 2; }
 GV=(MAX_RSS_MB=${MAX_RSS_MB:-3500} MIN_FREE_GB=${MIN_FREE_GB:-6} MAX_SWAP_GROWTH_MB=${MAX_SWAP_GROWTH_MB:-2500})
 mkdir -p $OUT
 LOG=$OUT/scene_ground.log
@@ -49,23 +51,30 @@ if [ ! -f $LABELS/labels.json ] || [ $(ls $LABELS/*.png 2>/dev/null | wc -l | tr
   env $GV MAX_RSS_MB=7000 $G $OUT/run-seg ${SEGMENT_PYTHON:-$HERE/2-masks/segment/.venv/bin/python} $HERE/2-masks/segment/segment_frames.py $FRAMES $LABELS > /dev/null
 fi
 
-EXTOUT=$($P $R "${BASEARGS[@]}" --output $OUT/unused.tif --print-extent)
+EXTOUT=$($P $R "${BASEARGS[@]}" --output $OUT/unused.tif --print-extent --print-tiles $TILE_M)
 EXT=($(echo $EXTOUT | grep EXTENT | cut -d' ' -f2-))
 CRS=$(echo $EXTOUT | grep '^CRS ' | cut -d' ' -f2)
-say "extent ${EXT[*]} ($CRS)"
-render_tiled() {  # render_tiled <name> <args...>: tiles along the longer side, then merge
+TILEBOX=("${(@f)$(echo $EXTOUT | grep '^TILE ' | cut -d' ' -f2-)}")
+say "extent ${EXT[*]} ($CRS), ${#TILEBOX} tiles of about $TILE_M m with track"
+render_one() {  # render_one <name> <tile number> <args...>; a tile with its .json is finished and kept
+  local name=$1 t=$2; shift 2
+  local tile=$OUT/tiles-$name/$t extra=()
+  [ -n "${ALSO_TWOBAND:-}" ] && extra=(--twoband-output $tile.twoband.tif)
+  [ -f $tile.json ] && return 0
+  env $GV $G $OUT/run-$name-$t $P $R "${BASEARGS[@]}" "$@" "${extra[@]}" --bbox ${=TILEBOX[$t]} --margin $TILE_MARGIN --output $tile.tif > /dev/null
+}
+render_tiled() {  # render_tiled <name> <args...>: every tile (JOBS lanes side by side), then merge; ALSO_TWOBAND=<name2> also merges the two-band blend
   local name=$1; shift
-  [ -f $OUT/$name.tif ] && { say "$name exists"; return 0; }
-  local e0=${EXT[1]} n0=${EXT[2]} e1=${EXT[3]} n1=${EXT[4]} tiles=() t
-  for ((t=0; t<TILES; t++)); do
-    local b=($($P -c "
-e0,n0,e1,n1,t,T=$e0,$n0,$e1,$n1,$t,$TILES
-if e1-e0 >= n1-n0: print(e0+(e1-e0)*t/T, n0, e0+(e1-e0)*(t+1)/T, n1)
-else: print(e0, n0+(n1-n0)*t/T, e1, n0+(n1-n0)*(t+1)/T)"))
-    env $GV $G $OUT/run-$name-$t $P $R "${BASEARGS[@]}" "$@" --bbox ${b[@]} --output $OUT/tiles-$name/$t.tif > /dev/null
-    tiles+=($OUT/tiles-$name/$t.tif)
+  [ -f $OUT/$name.tif ] && { [ -z "${ALSO_TWOBAND:-}" ] || [ -f $OUT/$ALSO_TWOBAND.tif ]; } && { say "$name exists"; return 0; }
+  local lanes=() j k p fail=0
+  for ((j=1; j<=JOBS; j++)); do
+    ( for ((k=j; k<=${#TILEBOX}; k+=JOBS)); do render_one $name $k "$@" || exit 1; done ) &
+    lanes+=($!)
   done
-  $P $HERE/4-ground/merge_tiles.py $OUT/$name.tif "${tiles[@]}" > /dev/null
+  for p in $lanes; do wait $p || fail=1; done
+  [ $fail = 0 ] || { say "$name: a tile failed (see $OUT/run-$name-*/monitor.log)"; return 1; }
+  $P $HERE/4-ground/merge_tiles.py $OUT/$name.tif $OUT/tiles-$name/{1..${#TILEBOX}}.tif > /dev/null
+  [ -n "${ALSO_TWOBAND:-}" ] && $P $HERE/4-ground/merge_tiles.py $OUT/$ALSO_TWOBAND.tif $OUT/tiles-$name/{1..${#TILEBOX}}.twoband.tif > /dev/null
   say "$name done"
 }
 
@@ -95,10 +104,8 @@ fi
 OFF=(--frame-offsets $OUT/offsets.json)
 
 # 4. ground without cars
-say "ground nearest"
-render_tiled ground_nearest "${EX[@]}" "${OFF[@]}" --gain-compensation local --blend nearest --median-k 5 --write-source --no-disagreement
-say "ground two-band"
-render_tiled ground_twoband "${EX[@]}" "${OFF[@]}" --gain-compensation local --blend twoband --median-k 5 --no-disagreement
+say "ground nearest and two-band"
+ALSO_TWOBAND=ground_twoband render_tiled ground_nearest "${EX[@]}" "${OFF[@]}" --gain-compensation local --blend nearest --median-k 5 --write-source --no-disagreement
 
 # 5. car layer
 [ -f $OUT/cars.tif ] || $P $HERE/4-ground/car_layer.py $OUT/base.labels.tif --colour $OUT/base.tif --output $OUT/cars > /dev/null

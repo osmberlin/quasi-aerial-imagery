@@ -577,12 +577,25 @@ def main() -> int:
                     help="with --frame-offsets (shift only): write a COLMAP text model whose camera centres are moved by "
                          "-offset horizontally, so other tools (splat, MVS) get the co-registration; then stop")
     ap.add_argument("--print-extent", action="store_true", help="print the output extent (E0 N0 E1 N1) and stop")
+    ap.add_argument("--print-tiles", type=float, metavar="METRES",
+                    help="with --print-extent: also print a grid of tiles of about this size (TILE E0 N0 E1 N1), "
+                         "only those with cells within --strip of a camera")
+    ap.add_argument("--twoband-output", type=Path,
+                    help="with --blend nearest: also write the two-band blend of the same frames to this GeoTIFF "
+                         "(same as a second run with --blend twoband, without rendering twice)")
     ap.add_argument("--max-reproj", type=float, default=5.0, help="refuse models whose median reprojection exceeds this (px)")
     ap.add_argument("--bbox", type=float, nargs=4, metavar=("E0", "N0", "E1", "N1"), help="render only this window")
+    ap.add_argument("--margin", type=float, default=0.0, metavar="METRES",
+                    help="with --bbox: also render this much around the window but write only the window, so blurs "
+                         "and local gains at the window edge see the same frames as in a render of the whole scene")
+    ap.add_argument("--patch-cache-mb", type=float, default=1500,
+                    help="keep frame patches in memory between the passes of one render up to this size (0 = decode every pass)")
     ap.add_argument("--crs", help="scene CRS, e.g. EPSG:25832 (default: env ORTHO_CRS, else the UTM zone at the median GPS position)")
     ap.add_argument("--no-gps", action="store_true",
                     help="frames have no GPS: scale from camera height, output in local metres without CRS")
     args = ap.parse_args()
+    if args.margin and (args.raise_groups or args.line_tiles > 0):
+        sys.exit("--margin changes the render grid, which --raise-from and --line-labels must match; render without it")
     if args.level == "dem" and not args.ground_dem:
         sys.exit("--level dem needs --ground-dem")
     if args.dem_shift != "none" and not args.ground_dem:
@@ -713,11 +726,33 @@ def main() -> int:
     if args.print_extent:
         print(f"CRS {crs}")
         print(f"EXTENT {e0:.3f} {n0:.3f} {e1:.3f} {n1:.3f}")
+        if args.print_tiles:
+            # tile edges on the pixel grid of the whole extent, so the tiles merge without resampling
+            w_all, h_all = math.ceil((e1 - e0) / args.gsd), math.ceil((n1 - n0) / args.gsd)
+            nx, ny = max(round((e1 - e0) / args.print_tiles), 1), max(round((n1 - n0) / args.print_tiles), 1)
+            xs = [e0 + round(w_all * k / nx) * args.gsd for k in range(nx + 1)]
+            ys = [n1 - round(h_all * k / ny) * args.gsd for k in range(ny + 1)]
+            tree0 = cKDTree(cam_utm)
+            for ty in range(ny):
+                for tx in range(nx):
+                    b = (xs[tx], ys[ty + 1], xs[tx + 1], ys[ty])
+                    pts = np.stack(np.meshgrid(np.arange(b[0], b[2] + 0.5, 0.5), np.arange(b[1], b[3] + 0.5, 0.5)), -1).reshape(-1, 2)
+                    if tree0.query(pts)[0].min() <= args.strip + 0.5:
+                        print(f"TILE {b[0]:.6f} {b[1]:.6f} {b[2]:.6f} {b[3]:.6f}")
         return 0
-    if args.bbox:  # experiments on a crop: render only this window (scene CRS)
-        e0, n0 = max(e0, args.bbox[0]), max(n0, args.bbox[1])
-        e1, n1 = min(e1, args.bbox[2]), min(n1, args.bbox[3])
+    core_box = (e0, n0, e1, n1)
+    if args.bbox:  # render only this window (scene CRS), plus --margin around it that is not written
+        m = round(args.margin / args.gsd) * args.gsd
+        core_box = (max(e0, args.bbox[0]), max(n0, args.bbox[1]), min(e1, args.bbox[2]), min(n1, args.bbox[3]))
+        e0, n0 = max(e0, args.bbox[0] - m), max(n0, args.bbox[1] - m)
+        e1, n1 = min(e1, args.bbox[2] + m), min(n1, args.bbox[3] + m)
     w_px, h_px = int(math.ceil((e1 - e0) / args.gsd)), int(math.ceil((n1 - n0) / args.gsd))
+    # the part that is written: the whole grid, or the --bbox window without the margin
+    cx0, cy0 = round((core_box[0] - e0) / args.gsd), round((n1 - core_box[3]) / args.gsd)
+    core_w = int(math.ceil((core_box[2] - core_box[0]) / args.gsd))
+    core_h = int(math.ceil((core_box[3] - core_box[1]) / args.gsd))
+    core = (slice(cy0, cy0 + core_h), slice(cx0, cx0 + core_w))
+    core_tf = from_origin(e0 + cx0 * args.gsd, n1 - cy0 * args.gsd, args.gsd, args.gsd)
     print(f"output {w_px} x {h_px} px at {args.gsd} m ({(e1 - e0):.0f} x {(n1 - n0):.0f} m)")
 
     layers = args.median_k
@@ -796,83 +831,141 @@ def main() -> int:
         ground_grid = (float(g["x0"]), float(g["y0"]), float(g["cell"]), g["z"])
     r_px = int(math.ceil(args.max_range / args.gsd))
 
+    def cell_xy(y0, y1, x0, x1):
+        east = e0 + (np.arange(x0, x1) + 0.5) * args.gsd
+        north = n1 - (np.arange(y0, y1) + 0.5) * args.gsd
+        ee, nn = np.meshgrid(east, north)
+        return np.stack([ee.ravel(), nn.ravel()], 1)
+
+    # Per-cell distance to the track and per-camera ground height depend only on the cell, not on the
+    # frame, so they are computed once per block of cells and reused by every frame and pass that
+    # covers the block (a cell is seen by dozens of frames). Blocks not used for a while are dropped.
+    block, track_blocks, block_used = 256, {}, {}
+
+    def track_cells(y0, y1, x0, x1, i):
+        """Distance to the nearest camera and per-camera ground height (float64, model units) for a window."""
+        d_out = np.empty((y1 - y0, x1 - x0), np.float64)
+        gz_out = np.empty((y1 - y0, x1 - x0), np.float64)
+        for by in range(y0 // block, (y1 - 1) // block + 1):
+            for bx in range(x0 // block, (x1 - 1) // block + 1):
+                key = (by, bx)
+                if key not in track_blocks:
+                    ya, yb = by * block, min((by + 1) * block, h_px)
+                    xa, xb = bx * block, min((bx + 1) * block, w_px)
+                    d_track, nearest = tree.query(cell_xy(ya, yb, xa, xb), k=min(3, len(names)))
+                    d_track, nearest = d_track.reshape(len(d_track), -1), nearest.reshape(len(nearest), -1)
+                    wgt = 1.0 / np.maximum(d_track, 0.05)
+                    gz = (ground_z[nearest] * wgt).sum(1) / wgt.sum(1)
+                    track_blocks[key] = (d_track[:, 0].reshape(yb - ya, xb - xa), gz.reshape(yb - ya, xb - xa))
+                block_used[key] = i
+                d_b, gz_b = track_blocks[key]
+                ys, xs = max(y0, by * block), max(x0, bx * block)
+                ye, xe = min(y1, (by + 1) * block), min(x1, (bx + 1) * block)
+                sub = (slice(ys - by * block, ye - by * block), slice(xs - bx * block, xe - bx * block))
+                d_out[ys - y0:ye - y0, xs - x0:xe - x0] = d_b[sub]
+                gz_out[ys - y0:ye - y0, xs - x0:xe - x0] = gz_b[sub]
+        for key in [k for k, used in block_used.items() if abs(i - used) > 40]:
+            del track_blocks[key], block_used[key]
+        return d_out.ravel(), gz_out.ravel()
+
+    # Patches are kept between the passes of one render (gain reference, gains, blend, labels), up to
+    # --patch-cache-mb, so each frame is decoded and projected once.
+    patch_cache: dict[int, tuple] = {}
+    cache_bytes = [0]
+
     def frame_patches():
         """Yield (index, window, patch, valid, distance) per frame: the frame's pixels on the ground grid."""
         for i, name in enumerate(names):
-            rot, t, _, _ = images[name]
-            cx = int((cam_utm[i, 0] - e0) / args.gsd)
-            cy = int((n1 - cam_utm[i, 1]) / args.gsd)
-            x0, x1 = max(cx - r_px, 0), min(cx + r_px + 1, w_px)
-            y0, y1 = max(cy - r_px, 0), min(cy + r_px + 1, h_px)
-            if x0 >= x1 or y0 >= y1:
+            if i in patch_cache:
+                win, patch, ok, d_cam, frame_patches.label = patch_cache[i]
+                yield i, win, patch, ok, d_cam
                 continue
-            east = e0 + (np.arange(x0, x1) + 0.5) * args.gsd
-            north = n1 - (np.arange(y0, y1) + 0.5) * args.gsd
-            ee, nn = np.meshgrid(east, north)
-            flat = np.stack([ee.ravel(), nn.ravel()], 1)
-            d_cam = np.hypot(flat[:, 0] - cam_utm[i, 0], flat[:, 1] - cam_utm[i, 1])
-            d_track, nearest = tree.query(flat, k=min(3, len(names)))
-            ok = (d_cam <= args.max_range) & (d_cam >= args.min_range) & (d_track[:, 0] <= args.strip)
-            if not ok.any():
+            hit = compute_patch(i, name)
+            if hit is None:
                 continue
-            # ground height: inverse-distance mean over the three nearest cameras
-            if offsets is not None and name in offsets:  # sample where this frame shows the cell (co-registration)
-                o = offsets[name]
-                if len(o) == 3:  # shift plus small rotation about the camera
-                    rel = flat - cam_utm[i]
-                    flat = flat + o[:2] + o[2] * np.column_stack([-rel[:, 1], rel[:, 0]])
-                else:
-                    flat = flat + o
-            model_xy = (flat - trans2) @ inv_rot2.T
-            if dem is not None:  # DEM (+ shift) at the cell where this frame shows it, in levelled model units
-                g = dem_sample(dem, flat + dem_shift_xy)
-                has_dem = np.isfinite(g)
-                gz = (np.where(has_dem, g, dem_offset) - dem_offset) / scale
-                ok &= has_dem
-            elif surface is not None:
-                coef, mxy = surface
-                dx_, dy_ = model_xy[:, 0] - mxy[0], model_xy[:, 1] - mxy[1]
-                terms = [np.ones_like(dx_), dx_, dy_] + ([dx_ * dx_, dx_ * dy_, dy_ * dy_] if len(coef) == 6 else [])
-                gz = np.stack(terms, 1) @ coef - args.camera_height / scale
-            elif ground_grid is None:
-                wgt = 1.0 / np.maximum(d_track, 0.05)
-                gz = (ground_z[nearest] * wgt).sum(1) / wgt.sum(1)
+            win, patch, ok, d_cam = hit
+            entry = (win, patch, ok, d_cam, frame_patches.label)
+            size = sum(a.nbytes for a in entry[1:] if a is not None)
+            if not args.export_patches and cache_bytes[0] + size <= args.patch_cache_mb * 1e6:  # an export has one pass
+                patch_cache[i] = entry
+                cache_bytes[0] += size
+            yield i, win, patch, ok, d_cam
+
+    def compute_patch(i, name):
+        """The frame's pixels on the ground grid: (window, patch, valid, distance), or None if it shows none of them."""
+        rot, t, _, _ = images[name]
+        cx = int((cam_utm[i, 0] - e0) / args.gsd)
+        cy = int((n1 - cam_utm[i, 1]) / args.gsd)
+        x0, x1 = max(cx - r_px, 0), min(cx + r_px + 1, w_px)
+        y0, y1 = max(cy - r_px, 0), min(cy + r_px + 1, h_px)
+        if x0 >= x1 or y0 >= y1:
+            return None
+        flat = cell_xy(y0, y1, x0, x1)
+        d_cam = np.hypot(flat[:, 0] - cam_utm[i, 0], flat[:, 1] - cam_utm[i, 1])
+        ok = (d_cam <= args.max_range) & (d_cam >= args.min_range)
+        if not ok.any():
+            return None
+        d_track0, gz_track = track_cells(y0, y1, x0, x1, i)
+        ok &= d_track0 <= args.strip
+        if not ok.any():
+            return None
+        # ground height: inverse-distance mean over the three nearest cameras
+        if offsets is not None and name in offsets:  # sample where this frame shows the cell (co-registration)
+            o = offsets[name]
+            if len(o) == 3:  # shift plus small rotation about the camera
+                rel = flat - cam_utm[i]
+                flat = flat + o[:2] + o[2] * np.column_stack([-rel[:, 1], rel[:, 0]])
             else:
-                gx0, gy0, gcell, gzz = ground_grid
-                fx = (model_xy[:, 0] - gx0) / gcell - 0.5
-                fy = (model_xy[:, 1] - gy0) / gcell - 0.5
-                from scipy.ndimage import map_coordinates
-                gz = map_coordinates(gzz, [fy, fx], order=1, mode="nearest")
-            if lift is not None:
-                gz = gz + lift[y0:y1, x0:x1].ravel() / scale
-            world = np.column_stack([model_xy, gz])
-            u, v = project(conv, world @ rot.T + t, width, height)
-            img = cv2.imread(str(args.images / name), cv2.IMREAD_COLOR)
-            shape = (y1 - y0, x1 - x0)
-            mu = (u % width).astype(np.float32).reshape(shape)
-            mv = np.clip(v, 0, height - 1).astype(np.float32).reshape(shape)
-            patch = cv2.remap(img, mu, mv, cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
-            if mask is not None or args.mask_dir is not None:
-                fmask, mask_sources[name] = frame_mask(name, args.mask_dir, mask, width, height)
-                if fmask is not None:
-                    ok &= cv2.remap(fmask, mu, mv, cv2.INTER_NEAREST, borderMode=cv2.BORDER_WRAP).ravel() > 127
-            frame_patches.label = None
-            if lut is not None:
-                lpath = args.labels / (Path(name).stem + ".png")
-                if not lpath.exists():
-                    missing_labels.append(name)
-                if lpath.exists():
-                    lab = cv2.imread(str(lpath), cv2.IMREAD_GRAYSCALE)
-                    sx, sy = lab.shape[1] / width, lab.shape[0] / height
-                    raw = cv2.remap(lab, mu * sx, mv * sy, cv2.INTER_NEAREST, borderMode=cv2.BORDER_WRAP)
-                    lg = lut[raw]
-                    frame_patches.label = lg
-                    if excluded:
-                        ok &= ~np.isin(lg, excluded).ravel()
-                    if ground_lut is not None:
-                        ok &= ground_lut[raw].ravel() | (d_cam <= args.wall_range)
-            ok = ok.reshape(shape)
-            yield i, (slice(y0, y1), slice(x0, x1)), patch, ok, d_cam.reshape(shape)
+                flat = flat + o
+        model_xy = (flat - trans2) @ inv_rot2.T
+        if dem is not None:  # DEM (+ shift) at the cell where this frame shows it, in levelled model units
+            g = dem_sample(dem, flat + dem_shift_xy)
+            has_dem = np.isfinite(g)
+            gz = (np.where(has_dem, g, dem_offset) - dem_offset) / scale
+            ok &= has_dem
+        elif surface is not None:
+            coef, mxy = surface
+            dx_, dy_ = model_xy[:, 0] - mxy[0], model_xy[:, 1] - mxy[1]
+            terms = [np.ones_like(dx_), dx_, dy_] + ([dx_ * dx_, dx_ * dy_, dy_ * dy_] if len(coef) == 6 else [])
+            gz = np.stack(terms, 1) @ coef - args.camera_height / scale
+        elif ground_grid is None:
+            gz = gz_track
+        else:
+            gx0, gy0, gcell, gzz = ground_grid
+            fx = (model_xy[:, 0] - gx0) / gcell - 0.5
+            fy = (model_xy[:, 1] - gy0) / gcell - 0.5
+            from scipy.ndimage import map_coordinates
+            gz = map_coordinates(gzz, [fy, fx], order=1, mode="nearest")
+        if lift is not None:
+            gz = gz + lift[y0:y1, x0:x1].ravel() / scale
+        world = np.column_stack([model_xy, gz])
+        u, v = project(conv, world @ rot.T + t, width, height)
+        img = cv2.imread(str(args.images / name), cv2.IMREAD_COLOR)
+        shape = (y1 - y0, x1 - x0)
+        mu = (u % width).astype(np.float32).reshape(shape)
+        mv = np.clip(v, 0, height - 1).astype(np.float32).reshape(shape)
+        patch = cv2.remap(img, mu, mv, cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+        if mask is not None or args.mask_dir is not None:
+            fmask, mask_sources[name] = frame_mask(name, args.mask_dir, mask, width, height)
+            if fmask is not None:
+                ok &= cv2.remap(fmask, mu, mv, cv2.INTER_NEAREST, borderMode=cv2.BORDER_WRAP).ravel() > 127
+        frame_patches.label = None
+        if lut is not None:
+            lpath = args.labels / (Path(name).stem + ".png")
+            if not lpath.exists():
+                missing_labels.append(name)
+            if lpath.exists():
+                lab = cv2.imread(str(lpath), cv2.IMREAD_GRAYSCALE)
+                sx, sy = lab.shape[1] / width, lab.shape[0] / height
+                raw = cv2.remap(lab, mu * sx, mv * sy, cv2.INTER_NEAREST, borderMode=cv2.BORDER_WRAP)
+                lg = lut[raw]
+                frame_patches.label = lg
+                if excluded:
+                    ok &= ~np.isin(lg, excluded).ravel()
+                if ground_lut is not None:
+                    ok &= ground_lut[raw].ravel() | (d_cam <= args.wall_range)
+        ok = ok.reshape(shape)
+        return (slice(y0, y1), slice(x0, x1)), patch, ok, d_cam.reshape(shape).astype(np.float32)
 
     def accumulate(gains=None, want_texture=False):
         """Keep, per ground cell, the `layers` nearest frames' colours, sorted by distance."""
@@ -891,12 +984,13 @@ def main() -> int:
                 sig = max(args.gain_scale / args.gsd / 2, 1.0)
                 both = (ok & rvalid[win]).astype(np.float32)
                 pf = patch.astype(np.float32)
-                wsum = np.maximum(cv2.GaussianBlur(both, (0, 0), sig), 1e-3)
+                wblur = cv2.GaussianBlur(both, (0, 0), sig)
+                wsum, inside = np.maximum(wblur, 1e-3), wblur > 0.2
                 field = np.empty_like(pf)
                 for c in range(3):
                     num = cv2.GaussianBlur(ref[win][..., c] * both, (0, 0), sig) / wsum
                     den = cv2.GaussianBlur(pf[..., c] * both, (0, 0), sig) / wsum
-                    field[..., c] = np.where(cv2.GaussianBlur(both, (0, 0), sig) > 0.2, num / np.maximum(den, 1.0), gains[i][c])
+                    field[..., c] = np.where(inside, num / np.maximum(den, 1.0), gains[i][c])
                 patch = np.clip(pf * np.clip(field, 0.5, 2.0), 0, 255).astype(np.uint8)
             elif gains is not None:
                 patch = np.clip(patch.astype(np.float32) * gains[i], 0, 255).astype(np.uint8)
@@ -935,17 +1029,18 @@ def main() -> int:
         return colour, dist, seen, texture
 
     def median_of(colour, dist, max_range=None):
-        import warnings
+        """Per-cell median over the used layers (same values as np.nanmedian, 0 where no layer is used)."""
         out = np.zeros((h_px, w_px, 3), np.uint8)
         for r0 in range(0, h_px, 256):  # row blocks keep the float copy small
             rows = slice(r0, r0 + 256)
             use = np.isfinite(dist[:, rows])
             if max_range is not None:
                 use &= (dist[:, rows] <= max_range) | (np.arange(dist.shape[0]) == 0)[:, None, None]
-            stack = np.where(use[..., None], colour[:, rows].astype(np.float32), np.nan)
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", RuntimeWarning)
-                out[rows] = np.nan_to_num(np.nanmedian(stack, axis=0)).astype(np.uint8)
+            stack = np.sort(np.where(use[..., None], colour[:, rows].astype(np.float32), np.inf), axis=0)
+            n = use.sum(0)[None, ..., None]  # unused layers sort to the end as +inf
+            lo = np.take_along_axis(stack, np.maximum(n - 1, 0) // 2, 0)[0]
+            hi = np.take_along_axis(stack, n // 2, 0)[0]
+            out[rows] = np.where(n[0] > 0, (lo + hi) / 2, 0).astype(np.uint8)
         return out
 
     def line_tiles(out, colour, dist, fid, winner):
@@ -1080,6 +1175,8 @@ def main() -> int:
 
     colour, dist, seen, texture = accumulate(gains, want_texture=not args.no_disagreement)
     count = np.isfinite(dist).sum(0)
+    if args.twoband_output and args.blend != "nearest":
+        sys.exit("--twoband-output needs --blend nearest")
     if args.blend == "nearest":
         out = colour[0]
     elif args.blend == "median":
@@ -1099,14 +1196,18 @@ def main() -> int:
     )[0].reshape(len(range(0, h_px, 10)), -1) <= args.strip
     coverage = float((alpha[::10, ::10] > 0)[in_strip].mean())
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    with rasterio.open(
-        args.output, "w", driver="GTiff", width=w_px, height=h_px, count=4, dtype="uint8", crs=crs,
-        transform=from_origin(e0, n1, args.gsd, args.gsd), compress="deflate", tiled=True, photometric="RGB",
-    ) as dst:
-        for band in range(3):
-            dst.write(out[..., 2 - band], band + 1)  # OpenCV is BGR
-        dst.write(alpha, 4)
+    def write_rgba(path, img):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with rasterio.open(
+            path, "w", driver="GTiff", width=core_w, height=core_h, count=4, dtype="uint8", crs=crs,
+            transform=core_tf, compress="deflate", tiled=True, photometric="RGB",
+        ) as dst:
+            for band in range(3):
+                dst.write(img[core][..., 2 - band], band + 1)  # OpenCV is BGR
+            dst.write(alpha[core], 4)
+    write_rgba(args.output, out)
+    if args.twoband_output:
+        write_rgba(args.twoband_output, twoband(colour, dist, max(args.twoband_scale / args.gsd / 2, 1.0)))
     # Alignment score independent of how many frames see a cell: fine-texture energy of the multi-frame
     # median relative to the nearest frame, over cells seen by at least 3 frames. 1.0 means the frames
     # line up perfectly (the median is as sharp as one frame); misaligned frames blur the median.
@@ -1129,10 +1230,9 @@ def main() -> int:
                          "cells_used": int(sel.sum()), "highpass_scale_m": 0.1}
     if args.write_source:
         src = accumulate.winner
-        with rasterio.open(args.output.with_suffix(".source.tif"), "w", driver="GTiff", width=w_px, height=h_px, count=1,
-                           dtype="int16", crs=crs, transform=from_origin(e0, n1, args.gsd, args.gsd), compress="deflate",
-                           tiled=True, nodata=-1) as dst:
-            dst.write(src, 1)
+        with rasterio.open(args.output.with_suffix(".source.tif"), "w", driver="GTiff", width=core_w, height=core_h, count=1,
+                           dtype="int16", crs=crs, transform=core_tf, compress="deflate", tiled=True, nodata=-1) as dst:
+            dst.write(src[core], 1)
     label_info = None
     if lut is not None:
         # band 1: group of the nearest usable frame; band 2: distance-weighted vote over all frames
@@ -1153,12 +1253,11 @@ def main() -> int:
         total = votes.sum(0)
         vote = votes.argmax(0).astype(np.uint8)
         share = np.where(total > 0, np.round(votes.max(0) / np.maximum(total, 1e-6) * 100), 0).astype(np.uint8)
-        with rasterio.open(args.output.with_suffix(".labels.tif"), "w", driver="GTiff", width=w_px, height=h_px, count=3,
-                           dtype="uint8", crs=crs, transform=from_origin(e0, n1, args.gsd, args.gsd), compress="deflate",
-                           tiled=True, nodata=0) as dst:
-            dst.write(nearest_lab, 1)
-            dst.write(vote, 2)
-            dst.write(share, 3)
+        with rasterio.open(args.output.with_suffix(".labels.tif"), "w", driver="GTiff", width=core_w, height=core_h, count=3,
+                           dtype="uint8", crs=crs, transform=core_tf, compress="deflate", tiled=True, nodata=0) as dst:
+            dst.write(nearest_lab[core], 1)
+            dst.write(vote[core], 2)
+            dst.write(share[core], 3)
             dst.update_tags(groups=json.dumps({i + 1: g for i, g in enumerate(LABEL_GROUPS)}))
         both = (nearest_lab > 0) & (vote > 0)
         label_info = {"groups": {i + 1: g for i, g in enumerate(LABEL_GROUPS)},

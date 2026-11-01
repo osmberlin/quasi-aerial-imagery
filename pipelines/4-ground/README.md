@@ -26,12 +26,12 @@ what did not work: [docs/failed-explorations.md](../../docs/failed-explorations.
 6. in Berlin: kerb and marking metrics and a registration against the Straßenbefahrung ([`../evaluate/`](../evaluate/)).
 
 ```bash
-LABELS=<labels> RENDER_MASK_DIR=<per-frame masks> TILES=40 \
+LABELS=<labels> RENDER_MASK_DIR=<per-frame masks> \
   RENDER_ARGS="--strip 10 --max-range 12 --wall-range 6" \
   pipelines/scene_ground.sh <scene> <frames> <camera height in m> <out>
 ```
 
-Renders run in `TILES` strips along the longer side of the scene and are merged. Memory grows with the
+Renders run in a grid of square tiles of about `TILE_M` metres (50) and are merged; tiles without track are skipped, a tile with its `.json` is kept on a restart, and each tile renders `TILE_MARGIN` metres (2) more than it keeps. `JOBS` tiles run side by side (default 1, 3 gives the same pixels 1.6 times faster on a free 24 GB Mac, R-221). Memory grows with the
 tile area, not with the number of frames: on a 630 x 690 m route, 16 tiles peaked at 8 GB, 40 tiles
 stayed under 7 GB (R-214). Each tile runs under the watchdog with `MAX_RSS_MB` (3500 by default).
 
