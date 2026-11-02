@@ -73,8 +73,13 @@ Every statement cites its evidence as plain IDs. `R-xxx` rows are runs, in [log/
   foot capture, R-206). The whole Alsace route has a mean GPS residual of 3.19 m, its sections 0.50 to 2.24 m, and a
   144-frame section 0.81 m (R-200, R-190). Place a result more accurately only with a reference (see Accuracy).
 - Memory is the limit. COLMAP at full settings reached 15.5 GB and rebooted the machine (R-083). With 2 threads and
-  `max_image_size` 3200 the same 35 frames registered in 58 s at a peak of 0.99 GB (R-084, D-068). A 957-frame route
-  took about 2 h: features 17 min, matching 28 min, mapper about 70 min (R-189).
+  `max_image_size` 3200 the same 35 frames registered in 58 s at a peak of 0.99 GB (R-084, D-068). 6 threads and the
+  same image size peak at 2.5 GB. The 957-frame route takes 17 to 19 min, against 24 to 27 min with 2 threads (R-227, D-127).
+- COLMAP is not repeatable on a whole route. Two runs with the same settings differ by 1.9 to 3.2 m on average and by up
+  to 47 m, in the industrial area with few tie points (R-227). On a 144-frame section they differ by 1 cm (R-226).
+  A difference between two route models needs a repeat before it can count as an effect.
+- 6 threads placed all 957 route frames in both runs, 2 threads 926 and 927 (R-227). The 30 extra frames are the first
+  after the GPS fix. They sit 15 m from their GPS positions, and why more threads place them is not known.
 
 ## Masks
 
@@ -144,10 +149,10 @@ Every statement cites its evidence as plain IDs. `R-xxx` rows are runs, in [log/
 - Merging tiles must stream. At 2 cm one raster would need over 4 GB in memory. `merge_tiles.py` uses
   `gdalbuildvrt` and `gdal_translate` for large mosaics (R-214).
 - The whole 2.17 km route as a 2 cm ground image takes 1 h on a 24 GB Apple Silicon Mac, down from 4 h 40 min (R-214,
-  R-222). The COG is 32,070 x 35,090 px, 38 MB as JPEG. `JOBS=3` is 1.6 times faster on scene-nord with identical pixels
-  (R-221). Co-registration needs about 2.2 GB of temporary patches on the route, on top of the 1.1 GB output.
+  R-222). The COG is 32,070 x 35,090 px, 38 MB as JPEG. `JOBS=3` takes 36 min on the route with identical pixels (R-228). Co-registration needs about 2.2 GB of temporary patches on the route, on top of the 1.1 GB output.
 - Swap can jump by 6 GB within 5 s and take the disk with it, too fast for a 5 s watchdog (R-224). Leave room.
 - Large outputs go to external storage, with a symlink from the scene folder. The Mac had 12 to 15 GB free (R-214).
+  Deleted data stays on the disk in local Time Machine snapshots until macOS releases them, so `df` can lag by hours.
   The guard stops a run when free disk falls below its limit: 13 GB free stopped a segmentation run at a 15 GB limit
   (R-188).
 - Other apps take memory too. Browsers, Docker and dev servers pushed swap use to 10.7 of 11.3 GB and stopped runs

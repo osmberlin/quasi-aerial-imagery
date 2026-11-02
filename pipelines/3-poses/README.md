@@ -23,12 +23,12 @@ frames, points and the mean reprojection error. Feature extraction and matching 
 | `GPS_STD` | 3 | horizontal GPS standard deviation in metres. 1 for a good MAX 2 track (Obernai, R-200) |
 | `GPS_STD_Z` | 200 | altitude prior; nearly free, because GPS altitude is poor (D-071) |
 | `FLAT_PRIOR` | 0 | 1 sets every altitude prior to the median GPS altitude, for flat sites where the free altitude lets a long model curl up; use with `GPS_STD_Z=5` |
-| `COLMAP_THREADS` | 2 | threads of feature extraction, matching and mapper |
+| `COLMAP_THREADS` | 6 | threads of feature extraction, matching and mapper |
 | `SKY_ELEV` | 16 | mask everything more than this many degrees above the horizon for the features; 0 = off. Textured clouds otherwise give many matches at infinity and no initial pair (R-195, D-116) |
 | `MASK_DIR` | – | per-frame masks `<frame file name>.png` (white = keep) instead of the static mask. Not recommended, see [failed explorations](../../docs/failed-explorations.md) |
 | `NO_GPS` | 0 | 1 for frames without GPS: plain `mapper`, scale from the camera height, local metres |
 
-COLMAP runs with 2 threads and at most 3200 px per image to stay within the memory of a 24 GB laptop;
+COLMAP runs with 6 threads and at most 3200 px per image, which peaks at 2.5 GB on a 24 GB laptop (R-226);
 each step runs under the watchdog [`../common/guarded_run.sh`](../common/guarded_run.sh).
 
 ## Checking the result

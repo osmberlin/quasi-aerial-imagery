@@ -5,7 +5,7 @@
 # Output: <scene>/colmap/run/sparse/0 (binary) and sparse/0/txt (text); the largest model is always model 0.
 # Skips feature extraction and matching when their marker files exist, so a failed mapper can be rerun.
 # Environment: GPS_STD (3), GPS_STD_Z (200: altitude nearly free, D-071), FLAT_PRIOR (0), SKY_ELEV (16), MASK_DIR, NO_GPS (0),
-#   COLMAP_THREADS (2),
+#   COLMAP_THREADS (6),
 #   PYTHON (default: pipelines/.venv/bin/python). See README.md next to this script for what each one does.
 case "${1:-}" in -h|--help|"") sed -n '2,/^case /p' $0 | sed '$d' | sed 's/^# \{0,1\}//'; exit 0;; esac
 set -eu
@@ -13,7 +13,7 @@ IMAGES=${1:A}; SCENE=${2:A}; MATCHER=$3; MASK=${4:A}
 HERE=${0:A:h}; PIPES=${HERE:h}
 PY=${PYTHON:-$PIPES/.venv/bin/python}; GUARD=$PIPES/common/guarded_run.sh
 SKY_ELEV=${SKY_ELEV:-16}; GPS_STD=${GPS_STD:-3}; GPS_STD_Z=${GPS_STD_Z:-200}; FLAT_PRIOR=${FLAT_PRIOR:-0}; NO_GPS=${NO_GPS:-0}
-THREADS=${COLMAP_THREADS:-2}
+THREADS=${COLMAP_THREADS:-6}
 log() { echo "=== $(date '+%F %T') $*" | tee -a $SCENE/scene.log; }
 
 RUN=$SCENE/colmap/run; MODEL=$RUN/sparse/0

@@ -11,6 +11,8 @@ What has been measured so far: [docs/learnings.md#accuracy](../../docs/learnings
 | [`reference_raster.py`](reference_raster.py) | draws reference lines into an RGBA overlay on the grid of an ortho, for the viewer | any GeoJSON |
 | [`fetch_ign_ortho.py`](fetch_ign_ortho.py) | IGN orthophoto (Géoplateforme WMS, 20 cm, Etalab 2.0) for the window of a scene, as a visual reference | France |
 | [`compare_with_reference.py`](compare_with_reference.py) | any XYZ orthophoto: warps it onto our grid and writes a side-by-side JPEG | anywhere |
+| [`colmap_compare.py`](colmap_compare.py) | none, internal: stage times, GPS residual and camera centre differences of two COLMAP runs | anywhere |
+| [`route_compare.py`](route_compare.py) | none, internal: changed pixels, sharpness and seams of two ground images too large to load whole | anywhere |
 
 `scene_ground.sh` runs the kerb metrics and the registration by itself when the scene is in Berlin
 (`FETCH_REFERENCE=1` downloads the lines from the WFS) or when `REFERENCE_DIR` holds
