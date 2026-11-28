@@ -11,7 +11,9 @@ export function MeasurementPanel({ sceneId }: { sceneId: string }) {
   const { removeMeasurement, clearMeasurements } = useMeasurementActions()
   const [copyState, setCopyState] = useState<CopyState>('idle')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const text = measurementsCopyText(sceneId, measurements, new Date())
+  // Only the day goes into the header, so the mount time is enough (keeps render pure).
+  const [today] = useState(() => new Date())
+  const text = measurementsCopyText(sceneId, measurements, today)
 
   async function copy() {
     try {
